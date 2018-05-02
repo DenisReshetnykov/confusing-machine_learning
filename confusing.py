@@ -18,6 +18,8 @@ from sklearn.metrics import accuracy_score
 def load_csv_data(datafile):
     loaded_data = pd.read_csv(datafile)
     return loaded_data
+loaded_data=load_csv_data('EEG_data.csv')
+
 
 def statistic_for_features(data):
     for value in data.columns.values[2:13]:
@@ -26,8 +28,6 @@ def statistic_for_features(data):
               ' min: '+str(data[value].min())+
               ' average: '+ str(np.mean(data[value]))+
               ' median: '+str(np.median(data[value])))
-
-# statistic_for_features(load_csv_data('EEG_data.csv'))
 
 
 def get_data_by_student_and_videoframe(data, student_id, videoframe_id):
@@ -43,8 +43,7 @@ def repack_data_to_same_size_dataframes_per_block(data):
             df = get_data_by_student_and_videoframe(data, student, videoframe)
             repacked_data = repacked_data.append(df)
     return repacked_data
-# print(len(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv'))))
-
+repacked_data = repack_data_to_same_size_dataframes_per_block(loaded_data)
 
 def plot_features_hist(data):
     # data.iloc[:, 2:13].hist()
@@ -55,17 +54,28 @@ def plot_features_hist(data):
 # plot_features_hist(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
 
 
-
-
 def plot_features_corelation(data):
     feature_columns = data.columns.values[2:13]
-    plt.title('Scatterplot Matrix')
-    # pd.plotting.scatter_matrix(data.iloc[:, 2:13])
-    data.iloc[:, 2:13].plot.scatter(data.iloc[:, 2:13], c = data.iloc[:, 13])
-    plt.tight_layout()
-    plt.show()
-
-plot_features_corelation(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
+    colors = ['red', 'blue']
+    axis = pd.plotting.scatter_matrix(data.iloc[:, 2:13],
+                                      c=data.iloc[:, 13].apply(lambda x: colors[int(x)]),
+                                      alpha=0.1,
+                                      figsize=(10, 10),
+                                      range_padding=0.01,
+                                      diagonal='hist')
+    plt.subplots_adjust()
+    axis[0,5].set_title('Scatterplot Matrix')
+    feature_iterator = iter(feature_columns)
+    for ax in axis[:,0]:
+        ax.set_yticks([])
+        ax.set_ylabel(next(feature_iterator), fontsize=6)
+    feature_iterator = iter(feature_columns)
+    for ax in axis[-1,:]:
+        ax.set_xticks([])
+        ax.set_xlabel(next(feature_iterator), fontsize=6)
+    # plt.show()
+    plt.savefig('scatterplot-matrix.png', format='png')
+# plot_features_corelation(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
 
 def correlation_matrix(data):
     fig = plt.figure()
@@ -90,8 +100,10 @@ def plot_features(data):
     for feature in range(len(feature_columns)):
         plt.subplot(11, 1, feature+1)
         for student in range(9):
-            plt.plot(data[feature_columns[feature]][1120*student: 1120*student+560], color = 'red', linestyle = '', marker = '.', ms = 0.1)
-            plt.plot(data[feature_columns[feature]][1120*student+560: 1120*(student+1)], color = 'blue', linestyle = '', marker = '.', ms = 0.1)
+            plt.plot(data[feature_columns[feature]][1120*student: 1120*student+560],
+                     color = 'red', linestyle = '', marker = '.', ms = 0.1)
+            plt.plot(data[feature_columns[feature]][1120*student+560: 1120*(student+1)],
+                     color = 'blue', linestyle = '', marker = '.', ms = 0.1)
         plt.ylabel(feature_columns[feature])
     plt.show()
 # plot_features(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
@@ -150,15 +162,16 @@ def calculate_cross_validated_student_independent_clasifier_acuracy(data, chunk_
         x_test = x[student*10*chunk_size:(student+1)*10*chunk_size]
         y_test = np.array(y[student * 10 * chunk_size:(student + 1) * 10*chunk_size], dtype=int)
         predicted = gaussian_clasifier(x_model, y_model, x_test)
-        clasifier_accuracy[student] = calculate_accuracy(predicted, y_test)
+        clasifier_accuracy[student] = round(calculate_accuracy(predicted, y_test), 3)
     return clasifier_accuracy
-# clasifier_accuracy = \
+# student_independent_clasifier_accuracy = \
 #     calculate_cross_validated_student_independent_clasifier_acuracy(
 #     repack_data_to_same_size_dataframes_per_block(
 #         load_csv_data('EEG_data.csv')
 #     ), 112
 # )
-# print(clasifier_accuracy)
+# print('student independent clasifier_accuracy is: \n'+str(student_independent_clasifier_accuracy)+
+#       ' and mean: '+str(np.mean(student_independent_clasifier_accuracy)))
 
 def calculate_cross_validated_student_specific_clasifier_acuracy(data, chunk_size):
     clasifier_accuracy = np.zeros(9)
@@ -178,15 +191,37 @@ def calculate_cross_validated_student_specific_clasifier_acuracy(data, chunk_siz
             predicted = gaussian_clasifier(x_model, y_model, x_test)
             student_accuracy[video] = round(calculate_accuracy(predicted, y_test), 3)
         clasifier_accuracy[student] = np.mean(student_accuracy)
-        print('for student ' + str(student) +
-              ' accuracies is: \n '+str(student_accuracy) +
-              ' and mean: ' + str(clasifier_accuracy[student])
-              )
+        # print('for student ' + str(student) +
+        #       ' accuracies is: \n '+str(student_accuracy) +
+        #       ' and mean: ' + str(clasifier_accuracy[student])
+        #       )
     return clasifier_accuracy
-# clasifier_accuracy = \
+# student_specific_clasifier_accuracy = \
 #     calculate_cross_validated_student_specific_clasifier_acuracy(
 #     repack_data_to_same_size_dataframes_per_block(
 #         load_csv_data('EEG_data.csv')
 #     ), 112
 # )
-# print(clasifier_accuracy)
+# print('student specific clasifier_accuracy is: \n'+str(student_specific_clasifier_accuracy)+
+#       ' and mean: '+str(np.mean(student_specific_clasifier_accuracy)))
+
+def plot_accuracy_histogram(datafile):
+    sica = calculate_cross_validated_student_independent_clasifier_acuracy(
+    repack_data_to_same_size_dataframes_per_block(
+        load_csv_data(datafile)
+    ), 112
+)
+    ssca = calculate_cross_validated_student_specific_clasifier_acuracy(
+    repack_data_to_same_size_dataframes_per_block(
+        load_csv_data(datafile)
+    ), 112
+)
+    studentlist = ['S' + str(n) for n in range(1, 10)]
+    plt.bar(np.arange(10), np.append(round(np.mean(sica), 3), sica), 0.4, color='green', label='Student independent')
+    plt.bar(np.arange(10)+0.4, np.append(round(np.mean(ssca), 3), ssca), 0.4, color='blue', label='Student specific')
+    plt.xticks(np.arange(10), ['Average']+studentlist)
+    plt.yticks(np.arange(0, 1.01, 0.1), [str(n)+'%' for n in range(0, 101, 10)])
+    plt.grid(axis='y')
+    plt.legend()
+    plt.show()
+# plot_accuracy_histogram('EEG_data.csv')
