@@ -5,7 +5,7 @@ from matplotlib import cm as cm
 import scipy as sc
 
 # For preprocessing the data
-from sklearn.preprocessing import Imputer
+from sklearn.preprocessing import StandardScaler
 from sklearn import preprocessing
 # To split the dataset into train and test datasets
 from sklearn.model_selection import train_test_split
@@ -19,6 +19,7 @@ def load_csv_data(datafile):
     loaded_data = pd.read_csv(datafile)
     return loaded_data
 loaded_data=load_csv_data('EEG_data.csv')
+# loaded_data=load_csv_data('EEG_data_unclear.csv')
 
 
 def statistic_for_features(data):
@@ -42,16 +43,49 @@ def repack_data_to_same_size_dataframes_per_block(data):
         for videoframe in range(10):
             df = get_data_by_student_and_videoframe(data, student, videoframe)
             repacked_data = repacked_data.append(df)
-    return repacked_data
+    return repacked_data.reset_index(drop=True)
 repacked_data = repack_data_to_same_size_dataframes_per_block(loaded_data)
 
-def plot_features_hist(data):
-    # data.iloc[:, 2:13].hist()
-    # data.iloc[:, 2:13].plot(kind='density', subplots=True, layout=(3, 4), sharex=False)
-    data.iloc[:, 2:13].plot(kind='box', subplots=True, layout=(3, 4), sharex=False, sharey=False)
-    plt.tight_layout()
+def restore_missed_data(data):
+    for n in range(112):
+        data.iloc[3360+336+n, 3] = np.mean([data.iloc[1120*i+336+n, 3] for i in [0, 1, 2, 4, 5, 6, 7, 8]])
+        data.iloc[3360 + 336 + n, 2] = np.mean([data.iloc[1120 * i + 336 + n, 2] for i in [0, 1, 2, 4, 5, 6, 7, 8]])
+    return data
+restored_data = restore_missed_data(repacked_data)
+
+def anti_aliasing_data(data, window):
+    for feature in range(4,13):
+        for student in range(9):
+            for video in range(10):
+                for n in range(112):
+                    position = student*1120+video*112+n
+                    data.iloc[position, feature] = \
+                            np.median(data.iloc[position-min(window, n):position+min(window, 112-n), feature])
+        print('AA for '+str(data.columns.values[feature]+' ended'))
+    return data
+aa_data = anti_aliasing_data(restored_data, 5)
+# print(aa_data)
+
+def standartized_data(data):
+    scaler = StandardScaler()
+    scaler.fit(data.iloc[:, 2:13])
+    data.iloc[:, 2:13] = scaler.transform(data.iloc[:, 2:13])
+    return data
+# std_data = standartized_data(restored_data)
+
+
+def plot_features_boxplots(data):
+    axes = data.iloc[:, 2:13].plot(kind='box',
+                            subplots=True,
+                            layout=(2, 6),
+                            sharex=False,
+                            sharey=False,
+                            whis=[0, 95],
+                            sym='.',
+                            widths=[0.75])
+    plt.subplots_adjust(wspace = 1)
     plt.show()
-# plot_features_hist(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
+# plot_features_boxplots(std_data)
 
 
 def plot_features_corelation(data):
@@ -74,8 +108,9 @@ def plot_features_corelation(data):
         ax.set_xticks([])
         ax.set_xlabel(next(feature_iterator), fontsize=6)
     # plt.show()
-    plt.savefig('scatterplot-matrix.png', format='png')
-# plot_features_corelation(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
+    plt.savefig('scatterplot-matrix-std.png', format='png')
+    plt.close()
+# plot_features_corelation(std_data)
 
 def correlation_matrix(data):
     fig = plt.figure()
@@ -85,28 +120,31 @@ def correlation_matrix(data):
     ax1.grid(True)
     plt.title('Feature Correlation')
     labels=data.columns.values[2: 13]
-    ax1.set_yticks(ticks=range(2, 13))
-    ax1.set_xticks(ticks=range(2, 13))
+    ax1.set_yticks(ticks=range(0, 11))
+    ax1.set_xticks(ticks=range(0, 11))
     ax1.set_xticklabels(labels, rotation='vertical', fontsize=6)
     ax1.set_yticklabels(labels, fontsize=6)
     # Add colorbar, make sure to specify tick locations to match desired ticklabels
     fig.colorbar(cax)
-    plt.show()
-
+    plt.savefig('correlation-matrix-AA5.png', format='png')
+# correlation_matrix(aa_data)
 
 def plot_features(data):
     feature_columns = data.columns.values[2:13]
     plt.title('Features')
     for feature in range(len(feature_columns)):
-        plt.subplot(11, 1, feature+1)
+        plt.subplot(len(feature_columns), 1, feature+1)
         for student in range(9):
             plt.plot(data[feature_columns[feature]][1120*student: 1120*student+560],
-                     color = 'red', linestyle = '', marker = '.', ms = 0.1)
+                     color = 'red', linestyle = '', marker = '.', ms = 0.2)
             plt.plot(data[feature_columns[feature]][1120*student+560: 1120*(student+1)],
-                     color = 'blue', linestyle = '', marker = '.', ms = 0.1)
-        plt.ylabel(feature_columns[feature])
-    plt.show()
-# plot_features(repack_data_to_same_size_dataframes_per_block(load_csv_data('EEG_data.csv')))
+                     color = 'blue', linestyle = '', marker = '.', ms = 0.2)
+        plt.ylabel(feature_columns[feature], rotation=0, labelpad=30,)
+        plt.yticks([],[])
+        plt.xticks(range(112*5, 112*5*2*9+1, 112*5*2), ['S' + str(n) for n in range(1, 10)])
+    plt.savefig('Features-AA5.png', format='png')
+    plt.close()
+# plot_features(std_data)
 
 def create_test_frame(data):
     x = data.iloc[:, 2:13]
@@ -164,14 +202,7 @@ def calculate_cross_validated_student_independent_clasifier_acuracy(data, chunk_
         predicted = gaussian_clasifier(x_model, y_model, x_test)
         clasifier_accuracy[student] = round(calculate_accuracy(predicted, y_test), 3)
     return clasifier_accuracy
-# student_independent_clasifier_accuracy = \
-#     calculate_cross_validated_student_independent_clasifier_acuracy(
-#     repack_data_to_same_size_dataframes_per_block(
-#         load_csv_data('EEG_data.csv')
-#     ), 112
-# )
-# print('student independent clasifier_accuracy is: \n'+str(student_independent_clasifier_accuracy)+
-#       ' and mean: '+str(np.mean(student_independent_clasifier_accuracy)))
+
 
 def calculate_cross_validated_student_specific_clasifier_acuracy(data, chunk_size):
     clasifier_accuracy = np.zeros(9)
@@ -190,32 +221,15 @@ def calculate_cross_validated_student_specific_clasifier_acuracy(data, chunk_siz
                        student * chunk_size * 10 + chunk_size * (video + 1)], dtype=int)
             predicted = gaussian_clasifier(x_model, y_model, x_test)
             student_accuracy[video] = round(calculate_accuracy(predicted, y_test), 3)
-        clasifier_accuracy[student] = np.mean(student_accuracy)
-        # print('for student ' + str(student) +
-        #       ' accuracies is: \n '+str(student_accuracy) +
-        #       ' and mean: ' + str(clasifier_accuracy[student])
-        #       )
+        clasifier_accuracy[student] = round(np.mean(student_accuracy), 3)
     return clasifier_accuracy
-# student_specific_clasifier_accuracy = \
-#     calculate_cross_validated_student_specific_clasifier_acuracy(
-#     repack_data_to_same_size_dataframes_per_block(
-#         load_csv_data('EEG_data.csv')
-#     ), 112
-# )
-# print('student specific clasifier_accuracy is: \n'+str(student_specific_clasifier_accuracy)+
-#       ' and mean: '+str(np.mean(student_specific_clasifier_accuracy)))
 
-def plot_accuracy_histogram(datafile):
-    sica = calculate_cross_validated_student_independent_clasifier_acuracy(
-    repack_data_to_same_size_dataframes_per_block(
-        load_csv_data(datafile)
-    ), 112
-)
-    ssca = calculate_cross_validated_student_specific_clasifier_acuracy(
-    repack_data_to_same_size_dataframes_per_block(
-        load_csv_data(datafile)
-    ), 112
-)
+
+def plot_accuracy_histogram(data):
+    sica = calculate_cross_validated_student_independent_clasifier_acuracy(data, 112)
+    ssca = calculate_cross_validated_student_specific_clasifier_acuracy(data, 112)
+    print('sica: '+str(sica))
+    print('ssca: '+str(ssca))
     studentlist = ['S' + str(n) for n in range(1, 10)]
     plt.bar(np.arange(10), np.append(round(np.mean(sica), 3), sica), 0.4, color='green', label='Student independent')
     plt.bar(np.arange(10)+0.4, np.append(round(np.mean(ssca), 3), ssca), 0.4, color='blue', label='Student specific')
@@ -223,5 +237,6 @@ def plot_accuracy_histogram(datafile):
     plt.yticks(np.arange(0, 1.01, 0.1), [str(n)+'%' for n in range(0, 101, 10)])
     plt.grid(axis='y')
     plt.legend()
-    plt.show()
-# plot_accuracy_histogram('EEG_data.csv')
+    plt.savefig('pre-defined accuracy-AA5.png', format='png')
+    plt.close()
+plot_accuracy_histogram(aa_data)
